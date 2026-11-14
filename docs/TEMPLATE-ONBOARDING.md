@@ -1,0 +1,11 @@
+# New automation onboarding
+- Name / ID:
+- Team and business owner:
+- What problem does it solve? (one paragraph)
+- Trigger, inputs, outputs, connected systems:
+- Personal information processed? Which?
+- Does output reach anyone outside the company?
+- Does it make or recommend decisions about people or money?
+- What happens if it's wrong? Reversible?
+- Expected volume per day, and a daily AI budget:
+- Proposed risk tier (AI Operations confirms):
