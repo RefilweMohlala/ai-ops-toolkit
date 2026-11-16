@@ -1,0 +1,485 @@
+{
+  "updatedAt": "2026-11-16T11:52:14.683Z",
+  "createdAt": "2026-11-15T13:51:32.316Z",
+  "id": "Z1RwicxaffzTh2Xl",
+  "name": "Ops: Eval Runner",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Ops: Eval Runner (manual)\nEdit the **Settings** node, then Execute. Replays the automation's eval_cases through the AI Gateway with the chosen prompt version and saves an eval_runs row. scripts/activate-prompt.sh only activates a version that passed in the last 24h.\nredactMode: empty, contact or full. redactField: the input field to redact (e.g. cv_text).",
+        "height": 220,
+        "width": 680
+      },
+      "id": "c3d39832-8572-4e53-ba0f-55d2bf772b76",
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "68c8c6d1-ba37-46f8-9d4e-30b9020e5197",
+      "name": "Run eval",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        16,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f7b616af-7f61-5e73-8ae3-4ca4f34ac9aa",
+              "name": "automationId",
+              "value": "toolkit-test",
+              "type": "string"
+            },
+            {
+              "id": "638a01b6-ed1a-56e1-9cc8-32661e917a36",
+              "name": "promptName",
+              "value": "hello",
+              "type": "string"
+            },
+            {
+              "id": "9c8940c9-e5e0-5b60-a3d4-2dc61866e521",
+              "name": "promptVersion",
+              "value": "v2",
+              "type": "string"
+            },
+            {
+              "id": "eaae2d46-42d0-5ae5-b98f-64795ddc668d",
+              "name": "redactMode",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "3bc21d7d-32d4-5ad1-8dc7-ee937229f0dd",
+              "name": "redactField",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6aaaf92e-26c3-4c7f-9ab5-eeda02dd7f9c",
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        256,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT c.case_id, c.kind, c.input, c.expected, a.eval_threshold::float AS threshold\nFROM eval_cases c JOIN automations a ON a.id = c.automation_id\nWHERE c.automation_id = $1\nORDER BY c.case_id;",
+        "options": {
+          "queryReplacement": "={{ [ $json.automationId ] }}"
+        }
+      },
+      "id": "63c08277-f6ff-43eb-9d4b-5504a3707550",
+      "name": "Load cases",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        496,
+        384
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "RG5MFV45Uz0rPy6H",
+          "name": "Ops DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "6d6f7e4a-e352-4633-81a5-da9ecfe7ddc2",
+      "name": "Each case",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        736,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Settings').first().json;\nconst c = $input.first().json;\nconst varsList = c.kind === 'pair' ? [c.input.a, c.input.b] : [c.input];\nreturn varsList.map((vars, slot) => ({\n  json: { slot, automationId: s.automationId, promptName: s.promptName, promptVersion: s.promptVersion, vars },\n}));"
+      },
+      "id": "7209e82f-b36b-4ac2-81c1-44fec10fbc6f",
+      "name": "Case calls",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1008,
+        416
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ad7a0c86-7b3c-5074-b5ed-3e3da0d3915c",
+              "leftValue": "={{ $('Settings').first().json.redactMode || '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "35e00600-2a49-47f5-a8d8-4b6a0f04364c",
+      "name": "Needs redaction?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1248,
+        416
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Settings').first().json;\nreturn $input.all().map((i) => ({ json: { text: i.json.vars[s.redactField], mode: s.redactMode } }));"
+      },
+      "id": "edcf8fe9-e9a6-4d06-a209-7ebb51fe93b4",
+      "name": "Redaction input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1488,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "C7YWlUe4GMwElcjf",
+          "cachedResultName": "Ops: Redact PII"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {}
+      },
+      "id": "67744e19-1ae3-4710-9c30-e62f44f98b70",
+      "name": "Redact (eval)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1728,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Settings').first().json;\nconst calls = $('Case calls').all().map((i) => i.json);\nreturn $input.all().map((item, i) => ({\n  json: { ...calls[i], vars: { ...calls[i].vars, [s.redactField]: item.json.redacted }, redacted: item.json.redacted },\n}));"
+      },
+      "id": "47f01b3c-f0b6-4d03-b690-d703e9f677df",
+      "name": "Apply redaction",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1968,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "zZg12dJCMDaRMDDv",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/zZg12dJCMDaRMDDv",
+          "cachedResultName": "Ops: AI Gateway"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {}
+      },
+      "id": "7c16f67a-7032-41ea-a0f1-7322bed3170b",
+      "name": "Assess (eval)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        2224,
+        416
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const c = $('Each case').first().json;\nconst results = $input.all().map((i) => i.json);\nconst cost = results.reduce((a, r) => a + (r.costUsd || 0), 0);\n\n// expected values: a list = \"any of these\"; {min,max} = a number range; anything else = exact match\nconst matches = (exp, got) =>\n  Array.isArray(exp) ? exp.includes(got)\n  : exp && typeof exp === 'object' ? typeof got === 'number' && got >= exp.min && got <= exp.max\n  : got === exp;\n\nif (c.kind === 'expected') {\n  const r = results[0];\n  const mismatches = !r.ok\n    ? [`invalid output: ${r.error}`]\n    : Object.entries(c.expected || {})\n        .filter(([k, exp]) => !matches(exp, r.value[k]))\n        .map(([k, exp]) => `${k}: expected ${JSON.stringify(exp)}, got ${JSON.stringify(r.value[k])}`);\n  return [{ json: { caseId: c.case_id, kind: 'expected', pass: mismatches.length === 0, mismatches, cost } }];\n}\n\n// Pair: both halves must get the same result.\nconst [a, b] = results;\nlet redactedIdentical = null;\ntry {\n  const texts = $('Apply redaction').all().map((i) => i.json.redacted);\n  redactedIdentical = texts[0] === texts[1];\n} catch { /* no redaction in this eval */ }\nconst problems = [];\nif (!a.ok || !b.ok) problems.push('invalid output');\nelse {\n  const diff = Math.abs(a.value.overall_score - b.value.overall_score);\n  if (diff > 0.5) problems.push(`scores differ by ${diff}`);\n  if (a.value.recommendation !== b.value.recommendation) problems.push(`recommendations differ: ${a.value.recommendation} vs ${b.value.recommendation}`);\n}\nif (redactedIdentical === false) problems.push('redacted texts differ: redaction missed a difference');\nreturn [{ json: { caseId: c.case_id, kind: 'pair', pass: problems.length === 0, mismatches: problems, cost, redactedIdentical } }];"
+      },
+      "id": "7bb5a817-edd9-4f55-8d0a-8059c918931e",
+      "name": "Score case",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2464,
+        416
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $('Settings').first().json;\nconst threshold = $('Load cases').first().json.threshold ?? 0.85;\nconst rows = $input.all().map((i) => i.json);\nconst expected = rows.filter((r) => r.kind === 'expected');\nconst pairs = rows.filter((r) => r.kind === 'pair');\nconst accuracy = expected.length ? expected.filter((r) => r.pass).length / expected.length : 1;\nconst pairsFailed = pairs.filter((r) => !r.pass).length;\nconst passed = accuracy >= threshold && pairsFailed === 0;\nconst cost = rows.reduce((a, r) => a + r.cost, 0);\nreturn [{\n  json: {\n    summary: `${passed ? 'PASSED' : 'FAILED'}: ${s.automationId} ${s.promptVersion}. Accuracy ${(accuracy * 100).toFixed(0)}% (needs ${(threshold * 100).toFixed(0)}%), paired tests failed: ${pairsFailed}, cost $${cost.toFixed(4)}`,\n    params: [s.automationId, s.promptVersion, rows.length, accuracy, pairsFailed, passed,\n             JSON.stringify({ cost, failures: rows.filter((r) => !r.pass) })],\n  },\n}];"
+      },
+      "id": "54eb2560-591a-473a-9e0b-67660cb50a9b",
+      "name": "Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1008,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO eval_runs (automation_id, prompt_version, cases, accuracy, pairs_failed, passed, details)\nVALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)\nRETURNING id, passed;",
+        "options": {
+          "queryReplacement": "={{ $json.params }}"
+        }
+      },
+      "id": "a5a7c123-877f-4863-8081-68cc0b98650e",
+      "name": "Save eval run",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1248,
+        208
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "RG5MFV45Uz0rPy6H",
+          "name": "Ops DB"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Run eval": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Load cases",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load cases": {
+      "main": [
+        [
+          {
+            "node": "Each case",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Each case": {
+      "main": [
+        [
+          {
+            "node": "Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Case calls",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Case calls": {
+      "main": [
+        [
+          {
+            "node": "Needs redaction?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs redaction?": {
+      "main": [
+        [
+          {
+            "node": "Redaction input",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Assess (eval)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redaction input": {
+      "main": [
+        [
+          {
+            "node": "Redact (eval)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redact (eval)": {
+      "main": [
+        [
+          {
+            "node": "Apply redaction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply redaction": {
+      "main": [
+        [
+          {
+            "node": "Assess (eval)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assess (eval)": {
+      "main": [
+        [
+          {
+            "node": "Score case",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score case": {
+      "main": [
+        [
+          {
+            "node": "Each case",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summary": {
+      "main": [
+        [
+          {
+            "node": "Save eval run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "68df505c-f856-42e8-bb58-0c285443c8fd",
+  "activeVersionId": null,
+  "versionCounter": 11,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-11-15T13:51:32.316Z",
+      "createdAt": "2026-11-15T13:51:32.316Z",
+      "role": "workflow:owner",
+      "workflowId": "Z1RwicxaffzTh2Xl",
+      "projectId": "AZg6UnNCSMSTyJfx",
+      "project": {
+        "updatedAt": "2026-11-14T18:10:49.368Z",
+        "createdAt": "2026-11-14T16:18:55.904Z",
+        "id": "AZg6UnNCSMSTyJfx",
+        "name": "Refilwe Mohlala <refilwemohlalaa@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "5caae24a-2e77-4f4d-8f4c-c859f92c40e1"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}

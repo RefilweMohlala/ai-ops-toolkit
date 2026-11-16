@@ -1,0 +1,326 @@
+{
+  "updatedAt": "2026-11-15T13:50:03.816Z",
+  "createdAt": "2026-11-15T13:49:48.172Z",
+  "id": "zilMVPSMGZ3ROxut",
+  "name": "Ops: Review Decision",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Ops: Review Decision (must be ACTIVE)\nGET /webhook/ops-review. The email link only shows a confirmation page. The decision is recorded only when the reviewer clicks Confirm, so email link scanners can't approve or reject by accident (Fix 3).\nOnly the first confirmation wins.",
+        "height": 180,
+        "width": 600
+      },
+      "id": "364de574-346c-4cf0-b1fa-4fe2b8affbb1",
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "path": "ops-review",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "9b31e0ba-57ab-456d-8d6f-d5f646ecac81",
+      "name": "Review link",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        16,
+        368
+      ],
+      "webhookId": "f30c1f0b-13f2-5932-8c48-9c4baef7bc46"
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst q = $input.first().json.query || {};\nconst id = parseInt(q.id, 10);\nconst d = q.d;\nconst sign = (s) => crypto.createHmac('sha256', $env.REVIEW_LINK_SECRET).update(s).digest('hex').slice(0, 32);\nconst same = (a, b) => typeof a === 'string' && typeof b === 'string' && a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));\n\n// The link from the email must be valid.\nconst linkOk = Number.isInteger(id) && ['approve', 'reject'].includes(d) && same(q.t, sign(`${id}:${d}`));\n// The confirm link (shown on the confirmation page) carries a second signed token, c.\nconst confirmToken = linkOk ? sign(`${id}:${d}:confirm`) : null;\nconst confirmed = linkOk && same(q.c, confirmToken);\nreturn [{\n  json: {\n    step: !linkOk ? 'invalid' : confirmed ? 'record' : 'ask',\n    id,\n    d,\n    decision: d === 'approve' ? 'approved' : 'rejected',\n    reviewer: 'email-link',\n    confirmLink: linkOk ? `${$env.N8N_PUBLIC_URL}/webhook/ops-review?id=${id}&d=${d}&t=${q.t}&c=${confirmToken}` : null,\n  },\n}];"
+      },
+      "id": "cbdf46ce-5d1d-4285-a51a-a72266292f06",
+      "name": "Verify",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        256,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "525715ad-f030-5fba-a0ab-ba56f6588bae",
+                    "leftValue": "={{ $json.step }}",
+                    "rightValue": "ask",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ask"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "94fe0804-0b4f-5805-ae17-f4dcd61f3543",
+                    "leftValue": "={{ $json.step }}",
+                    "rightValue": "record",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "record"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "6855b641-4c15-5ae0-9256-f9919b6dd70c",
+                    "leftValue": "={{ $json.step }}",
+                    "rightValue": "invalid",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "invalid"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b2d3d665-9ede-4ec8-9de9-3caee96ad7ab",
+      "name": "Which step?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        496,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<!doctype html>\n<html><body style=\"font-family:sans-serif;max-width:32rem;margin:3rem auto\">\n<h3>Confirm your decision</h3>\n<p>You are about to <b>{{ $json.d }}</b> review item #{{ $json.id }}.</p>\n<p><a href=\"{{ $json.confirmLink }}\" style=\"display:inline-block;padding:.6rem 1.2rem;background:#222;color:#fff;text-decoration:none\">Confirm {{ $json.d }}</a></p>\n<p style=\"color:#666\">Nothing happens until you click Confirm. If you didn't expect this email, close this page.</p>\n</body></html>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "id": "5b91e7de-3505-4a92-8e9a-a0591035cff4",
+      "name": "Confirm page",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        784,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE review_queue SET status = $2, decided_by = $3, decided_at = now()\nWHERE id = $1::int AND status = 'pending'\nRETURNING id;",
+        "options": {
+          "queryReplacement": "={{ [ $json.id, $json.decision, $json.reviewer ] }}"
+        }
+      },
+      "id": "3914a4d8-2762-4439-a2e0-c60076b5454b",
+      "name": "Record",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        784,
+        384
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "RG5MFV45Uz0rPy6H",
+          "name": "Ops DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.id ? 'Decision recorded.' : 'This item was already decided.' }}",
+        "options": {}
+      },
+      "id": "99a84e40-5b66-41a0-8c07-c8291391661b",
+      "name": "Confirm",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1024,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "Invalid link.",
+        "options": {
+          "responseCode": 403
+        }
+      },
+      "id": "1d57d2a4-82d0-4dcd-8b5b-2e24ae64e4b7",
+      "name": "Reject link",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        784,
+        544
+      ]
+    }
+  ],
+  "connections": {
+    "Review link": {
+      "main": [
+        [
+          {
+            "node": "Verify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify": {
+      "main": [
+        [
+          {
+            "node": "Which step?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Which step?": {
+      "main": [
+        [
+          {
+            "node": "Confirm page",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Record",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reject link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record": {
+      "main": [
+        [
+          {
+            "node": "Confirm",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "vAztUiXv8316cV6c",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "c47ac9fc-413e-4033-8941-a12183752439",
+  "activeVersionId": "c47ac9fc-413e-4033-8941-a12183752439",
+  "versionCounter": 2,
+  "triggerCount": 1,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-11-15T13:49:48.172Z",
+      "createdAt": "2026-11-15T13:49:48.172Z",
+      "role": "workflow:owner",
+      "workflowId": "zilMVPSMGZ3ROxut",
+      "projectId": "AZg6UnNCSMSTyJfx",
+      "project": {
+        "updatedAt": "2026-11-14T18:10:49.368Z",
+        "createdAt": "2026-11-14T16:18:55.904Z",
+        "id": "AZg6UnNCSMSTyJfx",
+        "name": "Refilwe Mohlala <refilwemohlalaa@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "5caae24a-2e77-4f4d-8f4c-c859f92c40e1"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": "Version c47ac9fc",
+    "description": ""
+  }
+}

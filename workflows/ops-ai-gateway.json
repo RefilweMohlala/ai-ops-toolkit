@@ -1,0 +1,384 @@
+{
+  "updatedAt": "2026-11-15T13:46:57.451Z",
+  "createdAt": "2026-11-15T13:46:43.591Z",
+  "id": "zZg12dJCMDaRMDDv",
+  "name": "Ops: AI Gateway",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Ops: AI Gateway\nEvery AI call goes through here: versioned prompt, daily budget breaker, timeout + retries, cost logging, output validation.\n\n**Input:** automationId, promptName, promptVersion (optional), vars, maxTokens (optional), effort (optional).\n**Output:** ok, retryable, outcome, error, value, usage, costUsd, promptVersion, latencyMs.\nCall it with an Execute Workflow node set to 'Run once for each item'.",
+        "height": 220,
+        "width": 620
+      },
+      "id": "ed7ab7a8-4097-466d-946d-5356054fb934",
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "c64655f5-f5f5-49f7-b33d-b185b8d954df",
+      "name": "Start",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        16,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT a.id AS automation_id,\n       p.output_schema,\n       a.daily_budget_usd::float AS budget,\n       (SELECT coalesce(sum(cost_usd), 0) FROM ai_calls\n         WHERE automation_id = a.id AND created_at >= current_date)::float AS spent_today,\n       p.version, p.system_prompt, p.user_template\nFROM automations a\nLEFT JOIN prompts p\n  ON p.automation_id = a.id\n AND p.name = $2::text\n AND p.version = COALESCE(NULLIF($3::text, ''),\n       (SELECT version FROM prompts WHERE automation_id = $1::text AND name = $2::text AND active))\nWHERE a.id = $1::text;",
+        "options": {
+          "queryReplacement": "={{ [ $json.automationId, $json.promptName, $json.promptVersion || '' ] }}"
+        }
+      },
+      "id": "584c86a4-0ef4-4f98-8908-9e7094cc469b",
+      "name": "Load prompt",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        256,
+        288
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "RG5MFV45Uz0rPy6H",
+          "name": "Ops DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $('Start').first().json;\nconst cfg = $('Load prompt').first().json;\nif (!cfg.automation_id) throw new Error(`Unknown automation \"${input.automationId}\"`);\nif (!cfg.system_prompt) {\n  throw new Error(`No ${input.promptVersion ? 'version ' + input.promptVersion : 'active version'} of prompt \"${input.promptName}\" for ${input.automationId}`);\n}\nconst vars = input.vars || {};\nconst render = (t) => t.replace(/\\{\\{(\\w+)\\}\\}/g, (_, k) => String(vars[k] ?? ''));\n// Haiku 5.5: no temperature/top_p/top_k. Thinking tokens count toward max_tokens, so the default is generous.\nreturn [{\n  json: {\n    automationId: cfg.automation_id,\n    promptVersion: cfg.version,\n    model: $env.CLAUDE_MODEL,\n    schema: cfg.output_schema,\n    startedAt: Date.now(),\n    overBudget: cfg.spent_today >= cfg.budget,\n    budget: cfg.budget,\n    body: {\n      model: $env.CLAUDE_MODEL,\n      max_tokens: Number(input.maxTokens || 4096),\n      output_config: { effort: input.effort || 'low' },\n      system: cfg.system_prompt,\n      messages: [{ role: 'user', content: render(cfg.user_template).slice(0, 30000) }],\n    },\n  },\n}];"
+      },
+      "id": "7a2832e6-0399-4f52-8d12-74db429efe49",
+      "name": "Build request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        496,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b373c471-4a12-5f8e-92c7-600b9bc4b36c",
+              "leftValue": "={{ $json.overBudget }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ea20a961-1c81-4e13-bd9a-9511bbc8a2bb",
+      "name": "Over budget?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        736,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const req = $('Build request').first().json;\nconst error = `Daily AI budget of $${req.budget} reached for ${req.automationId}`;\nreturn [{\n  json: {\n    ok: false, retryable: false, outcome: 'budget_exceeded', error,\n    value: null, text: null, usage: { input: 0, output: 0 }, costUsd: 0,\n    model: req.model, promptVersion: req.promptVersion, latencyMs: 0,\n    params: [req.automationId, req.promptVersion, req.model, 'budget_exceeded', 0, 0, 0, 0, error],\n  },\n}];"
+      },
+      "id": "0bd10a67-12d7-47e4-a616-bcc579b5dd5d",
+      "name": "Budget result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        976,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "28b05be7-2098-452b-833b-fd7ea0cf83cc",
+      "name": "Claude",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        400
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "fXzkabfRVBP26Z9P",
+          "name": "Anthropic"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const req = $('Build request').first().json;\nconst res = $input.first().json;\nconst text = (res.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('').trim();\nconst usage = { input: res.usage?.input_tokens ?? 0, output: res.usage?.output_tokens ?? 0 };\nconst costUsd = Math.round(\n  ((usage.input * Number($env.PRICE_INPUT_PER_MTOK) + usage.output * Number($env.PRICE_OUTPUT_PER_MTOK)) / 1e6) * 1e6,\n) / 1e6;\n\n// schema example: { \"category\": {\"type\":\"enum\",\"values\":[\"a\",\"b\"]}, \"confidence\": {\"type\":\"number\",\"min\":0,\"max\":1},\n//                   \"needs_human\": {\"type\":\"boolean\"}, \"draft_reply\": {\"type\":\"string\",\"min\":20,\"max\":3000} }\nfunction validate(raw, schema) {\n  if (!schema) return { ok: raw.length > 0, value: raw, problems: raw.length ? [] : ['empty'] };\n  let s = raw;\n  // Strip a markdown code fence if the model added one (three backticks, written as `{3}).\n  const fenced = s.match(/`{3}(?:json)?\\s*([\\s\\S]*?)`{3}/);\n  if (fenced) s = fenced[1];\n  let obj;\n  try {\n    obj = JSON.parse(s.slice(s.indexOf('{'), s.lastIndexOf('}') + 1));\n  } catch {\n    return { ok: false, value: null, problems: ['not_json'] };\n  }\n  const problems = [];\n  for (const [key, rule] of Object.entries(schema)) {\n    const v = obj[key];\n    if (rule.type === 'enum' && !rule.values.includes(v)) problems.push(key);\n    if (rule.type === 'number' && (typeof v !== 'number' || v < rule.min || v > rule.max)) problems.push(key);\n    if (rule.type === 'boolean' && typeof v !== 'boolean') problems.push(key);\n    if (rule.type === 'string' && (typeof v !== 'string' || v.trim().length < (rule.min ?? 0) || v.length > (rule.max ?? 100000))) problems.push(key);\n  }\n  return { ok: problems.length === 0, value: problems.length ? null : obj, problems };\n}\n\nconst v = validate(text, req.schema);\n// Haiku 5.5 can refuse (safety classifiers) or run out of max_tokens while thinking.\nconst stopProblem = res.stop_reason === 'refusal' ? 'refusal'\n  : res.stop_reason === 'max_tokens' ? 'truncated' : null;\nconst ok = v.ok && !stopProblem;\nconst outcome = ok ? 'ok' : 'invalid_output';\nconst latencyMs = Date.now() - req.startedAt;\nconst problems = [...(stopProblem ? [stopProblem] : []), ...v.problems];\nconst error = ok ? null : `invalid_output:${problems.join(',')}`;\nreturn [{\n  json: {\n    ok, retryable: false, outcome, error, value: ok ? v.value : null, text, usage, costUsd,\n    model: req.model, promptVersion: req.promptVersion, latencyMs,\n    params: [req.automationId, req.promptVersion, req.model, outcome,\n             usage.input, usage.output, costUsd, latencyMs, error],\n  },\n}];"
+      },
+      "id": "110d8973-72da-452c-8fce-717ad015b5d7",
+      "name": "Validate output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const req = $('Build request').first().json;\nconst item = $input.first().json;\nconst message = (typeof item.error === 'string' ? item.error : item.error?.message || 'unknown error').slice(0, 300);\nconst latencyMs = Date.now() - req.startedAt;\nreturn [{\n  json: {\n    ok: false, retryable: true, outcome: 'failed', error: message,\n    value: null, text: null, usage: { input: 0, output: 0 }, costUsd: 0,\n    model: req.model, promptVersion: req.promptVersion, latencyMs,\n    params: [req.automationId, req.promptVersion, req.model, 'failed', 0, 0, 0, latencyMs, message],\n  },\n}];"
+      },
+      "id": "2f3331ce-7eca-401b-a508-6cfefe972928",
+      "name": "Call failed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO ai_calls (automation_id, prompt_version, model, outcome, input_tokens, output_tokens, cost_usd, latency_ms, error)\nVALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);",
+        "options": {
+          "queryReplacement": "={{ $json.params }}"
+        }
+      },
+      "id": "f67c1a6f-e5c5-4b42-897b-6601b70687e6",
+      "name": "Log AI call",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1616,
+        336
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "RG5MFV45Uz0rPy6H",
+          "name": "Ops DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Only one of the three result nodes ran; find it.\nconst pick = (name) => {\n  try { return $(name).first().json; } catch { return null; }\n};\nconst r = pick('Validate output') ?? pick('Call failed') ?? pick('Budget result');\nconst { params, ...result } = r;\nreturn [{ json: result }];"
+      },
+      "id": "1fb9b7ee-8f3f-429c-8ce9-03c3cbae7429",
+      "name": "Return",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1856,
+        336
+      ]
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Load prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load prompt": {
+      "main": [
+        [
+          {
+            "node": "Build request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build request": {
+      "main": [
+        [
+          {
+            "node": "Over budget?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Over budget?": {
+      "main": [
+        [
+          {
+            "node": "Budget result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Claude",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Budget result": {
+      "main": [
+        [
+          {
+            "node": "Log AI call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude": {
+      "main": [
+        [
+          {
+            "node": "Validate output",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Call failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate output": {
+      "main": [
+        [
+          {
+            "node": "Log AI call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call failed": {
+      "main": [
+        [
+          {
+            "node": "Log AI call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log AI call": {
+      "main": [
+        [
+          {
+            "node": "Return",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "vAztUiXv8316cV6c",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "7741961e-09df-4218-87ba-9d84ad89e348",
+  "activeVersionId": null,
+  "versionCounter": 3,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-11-15T13:46:43.591Z",
+      "createdAt": "2026-11-15T13:46:43.591Z",
+      "role": "workflow:owner",
+      "workflowId": "zZg12dJCMDaRMDDv",
+      "projectId": "AZg6UnNCSMSTyJfx",
+      "project": {
+        "updatedAt": "2026-11-14T18:10:49.368Z",
+        "createdAt": "2026-11-14T16:18:55.904Z",
+        "id": "AZg6UnNCSMSTyJfx",
+        "name": "Refilwe Mohlala <refilwemohlalaa@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "5caae24a-2e77-4f4d-8f4c-c859f92c40e1"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}

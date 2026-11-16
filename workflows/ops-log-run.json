@@ -1,0 +1,117 @@
+{
+  "updatedAt": "2026-11-15T13:49:05.432Z",
+  "createdAt": "2026-11-15T13:48:53.792Z",
+  "id": "ea8FASKJRVg00cr4",
+  "name": "Ops: Log Run",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Ops: Log Run\n**Input:** automationId, itemRef (an ID, never personal details), outcome (completed | needs_review | failed | skipped_duplicate), detail, executionId.",
+        "width": 520
+      },
+      "id": "b5548053-7e56-4a90-983e-1fadd9f9f151",
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "96e07d36-6203-4a49-83c2-75aa72682e9c",
+      "name": "Start",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        16,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO runs (automation_id, item_ref, outcome, detail, execution_id)\nVALUES ($1, $2, $3, $4, $5);",
+        "options": {
+          "queryReplacement": "={{ [ $json.automationId, $json.itemRef, $json.outcome, $json.detail || null, $json.executionId || null ] }}"
+        }
+      },
+      "id": "fab3ad46-c265-4114-b41e-3b39690234bc",
+      "name": "Log",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        256,
+        240
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "RG5MFV45Uz0rPy6H",
+          "name": "Ops DB"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "vAztUiXv8316cV6c",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "b4ca6bdb-111d-4e1f-a02a-fb1a0f383e6d",
+  "activeVersionId": null,
+  "versionCounter": 2,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-11-15T13:48:53.792Z",
+      "createdAt": "2026-11-15T13:48:53.792Z",
+      "role": "workflow:owner",
+      "workflowId": "ea8FASKJRVg00cr4",
+      "projectId": "AZg6UnNCSMSTyJfx",
+      "project": {
+        "updatedAt": "2026-11-14T18:10:49.368Z",
+        "createdAt": "2026-11-14T16:18:55.904Z",
+        "id": "AZg6UnNCSMSTyJfx",
+        "name": "Refilwe Mohlala <refilwemohlalaa@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "5caae24a-2e77-4f4d-8f4c-c859f92c40e1"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}

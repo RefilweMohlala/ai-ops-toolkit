@@ -1,0 +1,107 @@
+{
+  "updatedAt": "2026-11-15T13:48:00.025Z",
+  "createdAt": "2026-11-15T13:47:22.069Z",
+  "id": "C7YWlUe4GMwElcjf",
+  "name": "Ops: Redact PII",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Ops: Redact PII\n**Input:** text, mode ('contact' or 'full').\ncontact = emails, links, 13-digit IDs, phone numbers.\nfull = also name, protected-attribute lines, titles, gendered pronouns (for CVs).\n**Output:** redacted, removed (counts only, never the values), mode.\nPattern-based: catches obvious markers, not everything.",
+        "height": 200,
+        "width": 560
+      },
+      "id": "ae1d8a3b-bff0-45a5-a6c9-a933a75af351",
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "5499183e-0c54-41f0-9e78-23051451f63e",
+      "name": "Start",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        16,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst mode = input.mode === 'full' ? 'full' : 'contact';\nlet t = String(input.text || '').replace(/\\r\\n/g, '\\n');\nconst removed = {};\nconst count = (label) => { removed[label] = (removed[label] || 0) + 1; };\nconst sub = (re, replacement, label) => { t = t.replace(re, () => { count(label); return replacement; }); };\nconst escape = (s) => s.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\n\n// 1. Contact details and identifiers (both modes). Done first so later steps can't mangle them.\nsub(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, '[EMAIL]', 'email');\nsub(/https?:\\/\\/\\S+|(?:www\\.)?linkedin\\.com\\/\\S+/gi, '[LINK]', 'link');\nsub(/\\b\\d{13}\\b/g, '[ID_NUMBER]', 'id_number');\n// Phones: international (+27 82 555 1234) or local with a leading 0 (082 555 0101, 011-555-1234, (011) 555 1234).\n// Requiring a + or a leading 0 stops dates, year ranges and reference numbers matching.\nsub(/(?<![\\d+])(?:\\+\\d{1,3}[\\s-]?\\(?\\d{1,3}\\)?[\\s-]?\\d{3}[\\s-]?\\d{3,4}|\\(?0\\d{2}\\)?[\\s-]?\\d{3}[\\s-]?\\d{4})(?!\\d)/g, '[PHONE]', 'phone');\n\nif (mode === 'full') {\n  // 2. The person's name: normally the first line that isn't a heading like \"Curriculum Vitae\".\n  const nameLine = t.split('\\n').map((l) => l.trim()).find((l) => l && !/curriculum|vitae|resum|^cv$/i.test(l));\n  if (nameLine && nameLine.split(/\\s+/).length <= 5 && !/[:@\\d[]/.test(nameLine)) {\n    const particles = ['van', 'der', 'de', 'du', 'von', 'la'];\n    const parts = [nameLine, ...nameLine.split(/\\s+/).filter((p) => p.length > 2 && !particles.includes(p.toLowerCase()))];\n    for (const p of parts) sub(new RegExp(`\\\\b${escape(p)}\\\\b`, 'gi'), '[CANDIDATE]', 'name');\n  }\n  // 3. Whole lines that state protected or irrelevant attributes (\"Gender: Female\", \"Date of birth: ...\").\n  sub(/^\\s*(?:[-•*]\\s*)?(gender|sex|race|ethnicity|population group|religion|marital status|date of birth|d\\.o\\.b\\.?|dob|age|nationality|citizenship|disability|health|home language|dependants?|children|address|physical address|suburb)\\s*[:\\-].*$/gim, '[REMOVED]', 'attribute_line');\n  // 4. Titles and gendered pronouns.\n  sub(/\\b(Mr|Mrs|Ms|Miss|Mx)\\.?\\s+/g, '', 'title');\n  const pronouns = { he: 'they', she: 'they', him: 'them', his: 'their', her: 'their', hers: 'theirs', himself: 'themselves', herself: 'themselves' };\n  t = t.replace(/\\b(he|she|him|his|her|hers|himself|herself)\\b/gi, (m) => {\n    count('pronoun');\n    const r = pronouns[m.toLowerCase()];\n    return m[0] === m[0].toUpperCase() ? r[0].toUpperCase() + r.slice(1) : r;\n  });\n}\nreturn [{ json: { redacted: t.replace(/\\n{3,}/g, '\\n\\n').trim(), removed, mode } }];"
+      },
+      "id": "9fa664d9-c181-450e-8f2a-71ea3a01abb0",
+      "name": "Redact",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        288
+      ]
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Redact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "vAztUiXv8316cV6c",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "d2f986d8-05a8-44d4-9d1b-f1470073386a",
+  "activeVersionId": null,
+  "versionCounter": 2,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-11-15T13:47:22.069Z",
+      "createdAt": "2026-11-15T13:47:22.069Z",
+      "role": "workflow:owner",
+      "workflowId": "C7YWlUe4GMwElcjf",
+      "projectId": "AZg6UnNCSMSTyJfx",
+      "project": {
+        "updatedAt": "2026-11-14T18:10:49.368Z",
+        "createdAt": "2026-11-14T16:18:55.904Z",
+        "id": "AZg6UnNCSMSTyJfx",
+        "name": "Refilwe Mohlala <refilwemohlalaa@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "5caae24a-2e77-4f4d-8f4c-c859f92c40e1"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}

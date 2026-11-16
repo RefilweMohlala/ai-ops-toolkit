@@ -1,0 +1,131 @@
+{
+  "updatedAt": "2026-11-15T13:51:14.040Z",
+  "createdAt": "2026-11-15T13:50:57.759Z",
+  "id": "RcWQnZwFINptH9Th",
+  "name": "Ops: Retention",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Ops: Retention (must be ACTIVE)\nNightly 02:00 SAST purge per section 7 of the Automation Standard: processed_items 90d, runs + ai_calls 180d, workflow_errors 90d, decided review_queue 180d, eval_runs 365d. One statement (data-modifying CTEs) so every table is purged or none is, and it returns the counts. Projects with personal data add their own steps and shorten these periods.",
+        "height": 200,
+        "width": 620
+      },
+      "id": "cc5627c9-ac38-4259-8537-f673ef7d2c82",
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2 * * *"
+            }
+          ]
+        }
+      },
+      "id": "fd042523-aa22-46d6-86d6-3275c3ebd3aa",
+      "name": "Nightly at 02:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        16,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH p AS (DELETE FROM processed_items WHERE processed_at < now() - interval '90 days' RETURNING 1),\n     r AS (DELETE FROM runs WHERE created_at < now() - interval '180 days' RETURNING 1),\n     a AS (DELETE FROM ai_calls WHERE created_at < now() - interval '180 days' RETURNING 1),\n     e AS (DELETE FROM workflow_errors WHERE created_at < now() - interval '90 days' RETURNING 1),\n     q AS (DELETE FROM review_queue WHERE status <> 'pending' AND decided_at < now() - interval '180 days' RETURNING 1),\n     v AS (DELETE FROM eval_runs WHERE created_at < now() - interval '365 days' RETURNING 1)\nSELECT (SELECT count(*) FROM p)::int AS processed_items_purged,\n       (SELECT count(*) FROM r)::int AS runs_purged,\n       (SELECT count(*) FROM a)::int AS ai_calls_purged,\n       (SELECT count(*) FROM e)::int AS workflow_errors_purged,\n       (SELECT count(*) FROM q)::int AS review_queue_purged,\n       (SELECT count(*) FROM v)::int AS eval_runs_purged;",
+        "options": {}
+      },
+      "id": "c60446a2-1045-49de-988f-4f20f70a03ef",
+      "name": "Purge",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        288,
+        288
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "RG5MFV45Uz0rPy6H",
+          "name": "Ops DB"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Nightly at 02:00": {
+      "main": [
+        [
+          {
+            "node": "Purge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "vAztUiXv8316cV6c",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": {
+    "node:Nightly at 02:00": {
+      "recurrenceRules": [
+        null
+      ],
+      "recurrenceRuleSignatures": [
+        null
+      ]
+    }
+  },
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "10c00c16-938c-47cd-ad4b-a1c276b77631",
+  "activeVersionId": "10c00c16-938c-47cd-ad4b-a1c276b77631",
+  "versionCounter": 2,
+  "triggerCount": 1,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-11-15T13:50:57.759Z",
+      "createdAt": "2026-11-15T13:50:57.759Z",
+      "role": "workflow:owner",
+      "workflowId": "RcWQnZwFINptH9Th",
+      "projectId": "AZg6UnNCSMSTyJfx",
+      "project": {
+        "updatedAt": "2026-11-14T18:10:49.368Z",
+        "createdAt": "2026-11-14T16:18:55.904Z",
+        "id": "AZg6UnNCSMSTyJfx",
+        "name": "Refilwe Mohlala <refilwemohlalaa@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "5caae24a-2e77-4f4d-8f4c-c859f92c40e1"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": "Version 10c00c16",
+    "description": ""
+  }
+}

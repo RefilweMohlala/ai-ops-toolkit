@@ -1,0 +1,301 @@
+{
+  "updatedAt": "2026-11-16T11:49:14.564Z",
+  "createdAt": "2026-11-15T13:50:17.651Z",
+  "id": "nkj9gHmQd7iid6Ai",
+  "name": "Ops: Monitor",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Ops: Monitor (must be ACTIVE)\nEvery 15 minutes: six health checks. Emails only when an alert changes state (or as a reminder every 4h while still firing), and sends RESOLVED when it clears. Runbook paths in the emails are runbooks/*.md in each project.",
+        "height": 180,
+        "width": 620
+      },
+      "id": "fb22f397-4b61-4d7f-a208-1527035d0dd7",
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "74a948d0-3ada-4bf7-b242-c1fba7f70565",
+      "name": "Every 15 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        16,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  (SELECT count(*) FROM ai_calls WHERE outcome = 'failed' AND created_at > now() - interval '1 hour')::int AS ai_failed_1h,\n  (SELECT count(*) FROM ai_calls WHERE outcome = 'invalid_output' AND created_at > now() - interval '6 hours')::int AS invalid_6h,\n  (SELECT coalesce(string_agg(DISTINCT automation_id, ', '), '') FROM ai_calls\n    WHERE outcome = 'budget_exceeded' AND created_at >= current_date) AS over_budget,\n  (SELECT count(*) FROM review_queue WHERE status = 'pending' AND created_at < now() - interval '24 hours')::int AS reviews_overdue,\n  (SELECT count(*) FROM runs WHERE outcome = 'failed' AND created_at > now() - interval '1 hour')::int AS runs_failed_1h,\n  (SELECT count(*) FROM workflow_errors WHERE created_at > now() - interval '1 hour')::int AS errors_1h;",
+        "options": {}
+      },
+      "id": "14a57734-0ec2-4ec3-a346-a967e9dfc3d0",
+      "name": "Health",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        256,
+        288
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "RG5MFV45Uz0rPy6H",
+          "name": "Ops DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT name, state, last_notified FROM alerts;",
+        "options": {}
+      },
+      "id": "f2424b5f-66e4-4009-a253-897f7527fc0f",
+      "name": "Current alerts",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        496,
+        288
+      ],
+      "alwaysOutputData": true,
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "RG5MFV45Uz0rPy6H",
+          "name": "Ops DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const h = $('Health').first().json;\nconst current = Object.fromEntries($('Current alerts').all().filter((i) => i.json.name).map((i) => [i.json.name, i.json]));\nconst now = new Date();\nconst rules = [\n  { name: 'ai_failures', breached: h.ai_failed_1h >= 3, detail: `${h.ai_failed_1h} failed AI calls in the last hour`, runbook: 'runbooks/ai-gateway.md' },\n  { name: 'invalid_output', breached: h.invalid_6h >= 3, detail: `${h.invalid_6h} invalid AI outputs in 6 hours`, runbook: 'runbooks/ai-gateway.md' },\n  { name: 'budget_exceeded', breached: h.over_budget !== '', detail: `Daily AI budget reached: ${h.over_budget}`, runbook: 'runbooks/ai-gateway.md' },\n  { name: 'reviews_overdue', breached: h.reviews_overdue > 0, detail: `${h.reviews_overdue} review(s) waiting more than 24h`, runbook: 'runbooks/review-backlog.md' },\n  { name: 'run_failures', breached: h.runs_failed_1h >= 3, detail: `${h.runs_failed_1h} failed runs in the last hour`, runbook: 'runbooks/ai-gateway.md' },\n  { name: 'workflow_errors', breached: h.errors_1h > 0, detail: `${h.errors_1h} workflow error(s) in the last hour`, runbook: 'Check the Error Handler emails' },\n];\nreturn rules.map((r) => {\n  const prev = current[r.name] || { state: 'ok' };\n  const wasFiring = prev.state === 'firing';\n  const remind = r.breached && wasFiring && prev.last_notified && now - new Date(prev.last_notified) > 4 * 3600e3;\n  const notify = r.breached !== wasFiring || remind;\n  return {\n    json: {\n      name: r.name, state: r.breached ? 'firing' : 'ok', detail: r.detail, notify,\n      subject: r.breached ? `● ${remind ? 'STILL FIRING' : 'ALERT'}: ${r.name}` : `✔ RESOLVED: ${r.name}`,\n      body: `${r.detail}\\n\\nRunbook: ${r.runbook}\\nTime: ${now.toISOString()}`,\n    },\n  };\n});"
+      },
+      "id": "2ae2e006-0556-47c9-bc60-fd702c2f91c7",
+      "name": "Evaluate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        736,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO alerts (name, state, since, last_notified, detail)\nVALUES ($1, $2, now(), CASE WHEN $3::boolean THEN now() END, $4)\nON CONFLICT (name) DO UPDATE SET\n  since = CASE WHEN alerts.state <> EXCLUDED.state THEN now() ELSE alerts.since END,\n  state = EXCLUDED.state,\n  last_notified = COALESCE(EXCLUDED.last_notified, alerts.last_notified),\n  detail = EXCLUDED.detail;",
+        "options": {
+          "queryReplacement": "={{ [ $json.name, $json.state, $json.notify, $json.detail ] }}"
+        }
+      },
+      "id": "ec9e7595-9141-4f10-9e46-0eb84f171ffe",
+      "name": "Save alert state",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1008,
+        176
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "RG5MFV45Uz0rPy6H",
+          "name": "Ops DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "af087ec6-7a15-5c0b-ad74-b28b35d8535a",
+              "leftValue": "={{ $json.notify }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "397ad04a-a6c1-44e0-9831-2e4c5afdc834",
+      "name": "Notify?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1008,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $env.ALERT_EMAIL }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.body }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "9b9b028a-6a70-4eef-9c2a-e33c1ee21c7b",
+      "name": "Send alert",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1248,
+        368
+      ],
+      "webhookId": "ee1f7259-9bfb-4c7f-a3a5-5536c26ac74f",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "a5FWHjnUUljFp61X",
+          "name": "Gmail"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 15 minutes": {
+      "main": [
+        [
+          {
+            "node": "Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Health": {
+      "main": [
+        [
+          {
+            "node": "Current alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Current alerts": {
+      "main": [
+        [
+          {
+            "node": "Evaluate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate": {
+      "main": [
+        [
+          {
+            "node": "Save alert state",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Notify?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify?": {
+      "main": [
+        [
+          {
+            "node": "Send alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "vAztUiXv8316cV6c",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": {
+    "node:Every 15 minutes": {
+      "recurrenceRules": [
+        null
+      ],
+      "recurrenceRuleSignatures": [
+        null
+      ]
+    }
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "7c158dc4-caab-45f1-b499-4b9d90ba5e49",
+  "activeVersionId": "facab91b-335e-4b42-b07c-13fc499cfc4a",
+  "versionCounter": 4,
+  "triggerCount": 1,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-11-15T13:50:17.651Z",
+      "createdAt": "2026-11-15T13:50:17.651Z",
+      "role": "workflow:owner",
+      "workflowId": "nkj9gHmQd7iid6Ai",
+      "projectId": "AZg6UnNCSMSTyJfx",
+      "project": {
+        "updatedAt": "2026-11-14T18:10:49.368Z",
+        "createdAt": "2026-11-14T16:18:55.904Z",
+        "id": "AZg6UnNCSMSTyJfx",
+        "name": "Refilwe Mohlala <refilwemohlalaa@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "5caae24a-2e77-4f4d-8f4c-c859f92c40e1"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}

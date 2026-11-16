@@ -1,0 +1,151 @@
+{
+  "updatedAt": "2026-11-15T13:44:43.874Z",
+  "createdAt": "2026-11-15T13:44:39.684Z",
+  "id": "vAztUiXv8316cV6c",
+  "name": "Ops: Error Handler",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "de5025cf-6b83-4a5e-8792-b11c72910322",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        16,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_errors (workflow, node, message, execution_id) VALUES ($1, $2, $3, $4);",
+        "options": {
+          "queryReplacement": "={{ [ $json.workflow?.name || null, $json.execution?.lastNodeExecuted || null, ($json.execution?.error?.message || '').slice(0, 500), $json.execution?.id || null ] }}"
+        }
+      },
+      "id": "278e72f6-2c6d-4b07-a805-743d05841f0b",
+      "name": "Log error",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        256,
+        240
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "RG5MFV45Uz0rPy6H",
+          "name": "Ops DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $env.ALERT_EMAIL }}",
+        "subject": "=● Workflow failed: {{ $('Error Trigger').first().json.workflow?.name }}",
+        "emailType": "text",
+        "message": "=Workflow: {{ $('Error Trigger').first().json.workflow?.name }}\nNode: {{ $('Error Trigger').first().json.execution?.lastNodeExecuted }}\nError: {{ $('Error Trigger').first().json.execution?.error?.message }}\nExecution: {{ $('Error Trigger').first().json.execution?.url }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "ca96b798-35df-44b4-883f-45b5e57af0d1",
+      "name": "Alert email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        496,
+        240
+      ],
+      "webhookId": "73568255-379a-4f62-8f6b-eecc33fb2348",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "a5FWHjnUUljFp61X",
+          "name": "Gmail"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Ops: Error Handler\nSet as the error workflow on every Ops workflow (except itself) and on every project workflow. Records the failure, then emails ALERT_EMAIL.",
+        "height": 140,
+        "width": 520
+      },
+      "id": "ee3a221f-3530-4571-87db-08d9ed62cae8",
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Log error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log error": {
+      "main": [
+        [
+          {
+            "node": "Alert email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "1405e41f-8572-4d76-a6bf-a4a11338c714",
+  "activeVersionId": "1405e41f-8572-4d76-a6bf-a4a11338c714",
+  "versionCounter": 2,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-11-15T13:44:39.684Z",
+      "createdAt": "2026-11-15T13:44:39.684Z",
+      "role": "workflow:owner",
+      "workflowId": "vAztUiXv8316cV6c",
+      "projectId": "AZg6UnNCSMSTyJfx",
+      "project": {
+        "updatedAt": "2026-11-14T18:10:49.368Z",
+        "createdAt": "2026-11-14T16:18:55.904Z",
+        "id": "AZg6UnNCSMSTyJfx",
+        "name": "Refilwe Mohlala <refilwemohlalaa@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "5caae24a-2e77-4f4d-8f4c-c859f92c40e1"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": "Version 1405e41f",
+    "description": ""
+  }
+}

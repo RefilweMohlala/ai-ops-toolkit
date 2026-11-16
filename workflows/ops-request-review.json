@@ -1,0 +1,205 @@
+{
+  "updatedAt": "2026-11-16T11:26:14.018Z",
+  "createdAt": "2026-11-15T13:49:18.342Z",
+  "id": "hoMoiJEkK7ak03wS",
+  "name": "Ops: Request Review",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Ops: Request Review\n**Input:** automationId, itemRef, reason, summary (no personal details), optional reviewerEmail.\nQueues the item and emails two signed links. The links only open a confirmation page (see Ops: Review Decision), they decide nothing by themselves.\n**Output:** reviewId, emailSent.",
+        "height": 200,
+        "width": 560
+      },
+      "id": "c85b4e22-f9a8-4196-baea-ca64f6bbbadc",
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "ae05e584-4ee4-4542-9aa6-35924a0d384d",
+      "name": "Start",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        16,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO review_queue (automation_id, item_ref, reason, summary) VALUES ($1, $2, $3, $4)\nRETURNING id;",
+        "options": {
+          "queryReplacement": "={{ [ $json.automationId, $json.itemRef, $json.reason, $json.summary || null ] }}"
+        }
+      },
+      "id": "d16632ea-61a7-4080-93ed-77bf85c84644",
+      "name": "Queue",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        256,
+        288
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "RG5MFV45Uz0rPy6H",
+          "name": "Ops DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst input = $('Start').first().json;\nconst id = $input.first().json.id;\nconst esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\nconst sign = (d) => crypto.createHmac('sha256', $env.REVIEW_LINK_SECRET).update(`${id}:${d}`).digest('hex').slice(0, 32);\nconst link = (d) => `${$env.N8N_PUBLIC_URL}/webhook/ops-review?id=${id}&d=${d}&t=${sign(d)}`;\nreturn [{\n  json: {\n    to: input.reviewerEmail || $env.REVIEWER_EMAIL,\n    subject: `[Review needed] ${input.automationId}: ${input.reason}`,\n    html: `<h3>Review needed: ${esc(input.automationId)}</h3>\n<p><b>Item:</b> ${esc(input.itemRef)}<br><b>Why:</b> ${esc(input.reason)}</p>\n<p>${esc(input.summary)}</p>\n<p><a href=\"${link('approve')}\">✔ Approve</a> &nbsp;|&nbsp; <a href=\"${link('reject')}\">✘ Reject</a></p>`,\n  },\n}];"
+      },
+      "id": "31ec4302-b982-45ca-b123-babd464affc0",
+      "name": "Build email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        496,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "63b1ccdb-beaa-4a9e-8096-02145c0331ef",
+      "name": "Send",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        736,
+        288
+      ],
+      "webhookId": "892a9a9e-bb3a-46a4-9d3e-69eb500ac4e3",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "a5FWHjnUUljFp61X",
+          "name": "Gmail"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const sent = $input.first().json;\nreturn [{ json: { reviewId: $('Queue').first().json.id, emailSent: !sent.error } }];"
+      },
+      "id": "649e61ee-dee9-49fe-aff5-2864f5cc201d",
+      "name": "Return",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        976,
+        288
+      ]
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Queue": {
+      "main": [
+        [
+          {
+            "node": "Build email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build email": {
+      "main": [
+        [
+          {
+            "node": "Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send": {
+      "main": [
+        [
+          {
+            "node": "Return",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "vAztUiXv8316cV6c",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "9a04b053-9d1b-410d-9ad1-36033dfa16c1",
+  "activeVersionId": null,
+  "versionCounter": 3,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-11-15T13:49:18.342Z",
+      "createdAt": "2026-11-15T13:49:18.342Z",
+      "role": "workflow:owner",
+      "workflowId": "hoMoiJEkK7ak03wS",
+      "projectId": "AZg6UnNCSMSTyJfx",
+      "project": {
+        "updatedAt": "2026-11-14T18:10:49.368Z",
+        "createdAt": "2026-11-14T16:18:55.904Z",
+        "id": "AZg6UnNCSMSTyJfx",
+        "name": "Refilwe Mohlala <refilwemohlalaa@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "5caae24a-2e77-4f4d-8f4c-c859f92c40e1"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}

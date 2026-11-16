@@ -1,0 +1,141 @@
+{
+  "updatedAt": "2026-11-15T13:48:30.421Z",
+  "createdAt": "2026-11-15T13:48:16.515Z",
+  "id": "QW2GBiyOvX2MMCd7",
+  "name": "Ops: Claim Item",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Ops: Claim Item\nIdempotency (C07). **Input:** automationId, itemRef.\n**Output:** claimed = true the first time, false for a duplicate. The database enforces it atomically.",
+        "width": 520
+      },
+      "id": "d432c81e-4d36-4963-ab2a-63e7a7ac1910",
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "4a9facf0-0b73-4bf3-8efb-fa76e36a0fb6",
+      "name": "Start",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        16,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO processed_items (automation_id, item_ref) VALUES ($1, $2)\nON CONFLICT DO NOTHING\nRETURNING item_ref;",
+        "options": {
+          "queryReplacement": "={{ [ $json.automationId, $json.itemRef ] }}"
+        }
+      },
+      "id": "6490cbd2-39eb-407b-8f75-daca05556979",
+      "name": "Claim",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        256,
+        240
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "RG5MFV45Uz0rPy6H",
+          "name": "Ops DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { claimed: !!$input.first().json.item_ref } }];"
+      },
+      "id": "9b999559-edf9-4578-8a68-32778f94e2a8",
+      "name": "Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        496,
+        240
+      ]
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Claim",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim": {
+      "main": [
+        [
+          {
+            "node": "Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "vAztUiXv8316cV6c",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "1dcaf45b-784c-4882-bde3-105d64548825",
+  "activeVersionId": null,
+  "versionCounter": 2,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-11-15T13:48:16.515Z",
+      "createdAt": "2026-11-15T13:48:16.515Z",
+      "role": "workflow:owner",
+      "workflowId": "QW2GBiyOvX2MMCd7",
+      "projectId": "AZg6UnNCSMSTyJfx",
+      "project": {
+        "updatedAt": "2026-11-14T18:10:49.368Z",
+        "createdAt": "2026-11-14T16:18:55.904Z",
+        "id": "AZg6UnNCSMSTyJfx",
+        "name": "Refilwe Mohlala <refilwemohlalaa@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "5caae24a-2e77-4f4d-8f4c-c859f92c40e1"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}
